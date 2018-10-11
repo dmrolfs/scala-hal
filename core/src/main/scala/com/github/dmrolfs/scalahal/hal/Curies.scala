@@ -4,6 +4,8 @@ package com.github.dmrolfs.scalahal.hal
   * Helper class used to resolve CURIs in links and embedded items.
   */
 case class Curies( curies: Seq[Link] ) {
+  import journal._
+  private val log = Logger[Curies]
 
   /**
     * Registers a CURI link in the Curies instance.
@@ -12,20 +14,31 @@ case class Curies( curies: Seq[Link] ) {
     * @throws IllegalArgumentException if the link-relation type of the link is not equal to 'curies'
     */
   def register( curi: Link ): Curies = {
-    require( curi.rel != Curies.Rel, "Link must be a CURI" )
+    require( curi.rel == Curies.Rel, "Link must be a CURI" )
+
+    log.debug( s"Curies: curies=[${curies.mkString( ", " )}]" )
+    log.debug( s"curi = [${curi}]" )
 
     val alreadyRegistered = curies exists { _.href == curi.href }
+    log.debug( s"alreadyRegistered = ${alreadyRegistered}" )
 
     val newCuries = if (!alreadyRegistered) {
       curies
     } else {
-      curies
+      val r1 = curies
         .filterNot { _.name == curi.name }
-        .collect {
-          case c if c.name == curi.name => curi
-          case c                        => c
-        }
+
+      log.debug( s"r1 = [${r1.mkString( ", " )}]" )
+
+      val r2 = r1.collect {
+        case c if c.name == curi.name => curi
+        case c                        => c
+      }
+
+      log.debug( s"r2 = [${r2.mkString( ", " )}]" )
+      r2
     }
+    log.debug( s"newCuries = [${newCuries.mkString( ", " )}]" )
 
     this.copy( curies = newCuries :+ curi )
   }
@@ -36,7 +49,10 @@ case class Curies( curies: Seq[Link] ) {
     * @param other merged Curies
     * @return a merged copy of this and other
     */
-  def mergeWith( that: Curies ): Curies = that.curies.foldLeft( this ) { _ register _ }
+  def mergeWith( that: Curies ): Curies = {
+    log.debug( "MERGING..." )
+    that.curies.foldLeft( this ) { _ register _ }
+  }
 
   /**
     * Merges this Curies with another instance of Curies and returns the merged instance.

@@ -95,7 +95,7 @@ class CuriTemplateSpec extends WordSpec with Matchers with OptionValues {
             .curiTemplateFor( someCuri )
             .curiedRelFrom( nonMatchingRel )
         }
-        caught.getMessage should include( "Rel does not match the CURI template." )
+        caught.getMessage should fullyMatch regex """Rel \[.*\] does not match the CURI template.""".r
       }
 
       "expand rel" in {
@@ -109,7 +109,7 @@ class CuriTemplateSpec extends WordSpec with Matchers with OptionValues {
           CuriTemplate.curiTemplateFor( someCuri ).expandedRelFrom( nonMatchingRel )
         }
 
-        caught.getMessage should include( "Rel does not match the CURI template." )
+        caught.getMessage should fullyMatch regex """Rel \[.*\] does not match the CURI template.""".r
       }
 
       "extract placeholder value" in {
@@ -123,7 +123,7 @@ class CuriTemplateSpec extends WordSpec with Matchers with OptionValues {
           CuriTemplate.curiTemplateFor( someCuri ).relPlaceHolderFrom( nonMatchingRel )
         }
 
-        caught.getMessage should include( "Rel does not match the CURI template." )
+        caught.getMessage should fullyMatch regex """Rel \[.*\] does not match the CURI template.""".r
       }
     }
   }

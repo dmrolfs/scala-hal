@@ -71,8 +71,6 @@ case class CuriTemplate private (
   relSuffix: String,
   curi: Link
 ) {
-  import journal._
-  private val log = Logger[CuriTemplate]
 
   /**
     * Returns true, if the given link-relation type is matching the CuriTemplate pattern, false if
@@ -126,12 +124,7 @@ case class CuriTemplate private (
     * @return boolean
     * @since 0.1.0
     */
-  def isMatchingCuriedRel( rel: String ): Boolean = {
-    log.info(
-      s"isMatchingCuriedRel: rel=[${rel}] startsWith curiedRelPrefix=[${curiedRelPrefix}]?"
-    )
-    rel startsWith curiedRelPrefix
-  }
+  def isMatchingCuriedRel( rel: String ): Boolean = rel startsWith curiedRelPrefix
 
   /**
     * Returns true, if the given link-relation type is a non-CURI rel matching the CuriTemplate
@@ -158,9 +151,6 @@ case class CuriTemplate private (
     * @since 0.1.0
     */
   def isMatchingExpandedRel( rel: String ): Boolean = {
-    log.info(
-      s"isMatchingExpandedRel: rel=[${rel}] startsWith relPrefix=[${relPrefix}] && endsWith relSuffix=[${relSuffix}]?"
-    )
     rel.startsWith( relPrefix ) && rel.endsWith( relSuffix )
   }
 
@@ -194,7 +184,7 @@ case class CuriTemplate private (
     else if (isMatchingExpandedRel( rel )) {
       rel.substring( relPrefix.length, rel.length - relSuffix.length )
     } else {
-      throw new IllegalArgumentException( "Rel does not match the CURI template." )
+      throw new IllegalArgumentException( s"Rel [${rel}] does not match the CURI template." )
     }
   }
 
@@ -227,7 +217,7 @@ case class CuriTemplate private (
     else if (isMatchingExpandedRel( rel )) {
       curi.name.map( _ + ":" ).getOrElse( "" ) + relPlaceHolderFrom( rel )
     } else {
-      throw new IllegalArgumentException( "Rel does not match the CURI template." )
+      throw new IllegalArgumentException( s"Rel [${rel}] does not match the CURI template." )
     }
   }
 
@@ -261,7 +251,7 @@ case class CuriTemplate private (
     } else if (isMatchingExpandedRel( rel )) {
       rel
     } else {
-      throw new IllegalArgumentException( "Rel does not match the CURI template." )
+      throw new IllegalArgumentException( s"Rel [${rel}] does not match the CURI template." )
     }
   }
 }
