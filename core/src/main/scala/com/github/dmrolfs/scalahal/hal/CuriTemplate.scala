@@ -71,6 +71,8 @@ case class CuriTemplate private (
   relSuffix: String,
   curi: Link
 ) {
+  import journal._
+  private val log = Logger[CuriTemplate]
 
   /**
     * Returns true, if the given link-relation type is matching the CuriTemplate pattern, false if
@@ -124,7 +126,12 @@ case class CuriTemplate private (
     * @return boolean
     * @since 0.1.0
     */
-  def isMatchingCuriedRel( rel: String ): Boolean = rel startsWith curiedRelPrefix
+  def isMatchingCuriedRel( rel: String ): Boolean = {
+    log.info(
+      s"isMatchingCuriedRel: rel=[${rel}] startsWith curiedRelPrefix=[${curiedRelPrefix}]?"
+    )
+    rel startsWith curiedRelPrefix
+  }
 
   /**
     * Returns true, if the given link-relation type is a non-CURI rel matching the CuriTemplate
@@ -151,6 +158,9 @@ case class CuriTemplate private (
     * @since 0.1.0
     */
   def isMatchingExpandedRel( rel: String ): Boolean = {
+    log.info(
+      s"isMatchingExpandedRel: rel=[${rel}] startsWith relPrefix=[${relPrefix}] && endsWith relSuffix=[${relSuffix}]?"
+    )
     rel.startsWith( relPrefix ) && rel.endsWith( relSuffix )
   }
 
@@ -214,8 +224,9 @@ case class CuriTemplate private (
     */
   def curiedRelFrom( rel: String ): String = {
     if (isMatchingCuriedRel( rel )) rel
-    else if (isMatchingExpandedRel( rel )) curi.name + ":" + relPlaceHolderFrom( rel )
-    else {
+    else if (isMatchingExpandedRel( rel )) {
+      curi.name.map( _ + ":" ).getOrElse( "" ) + relPlaceHolderFrom( rel )
+    } else {
       throw new IllegalArgumentException( "Rel does not match the CURI template." )
     }
   }
@@ -275,17 +286,20 @@ object CuriTemplate {
     * @since 0.1.0
     */
   def curiTemplateFor( curi: Link ): CuriTemplate = {
-    require( curi.rel != Curies.Rel || curi.name.isEmpty, "Parameter is not a CURI link." )
     require(
-      !curi.href.contains( REL_PLACEHOLDER ),
-      "Href of the CURI does not contain the required {rel} placeholder."
+      curi.rel == Curies.Rel && (curi.name.isDefined && !curi.name.get.isEmpty),
+      s"Parameter is not a CURI link. rel=${curi.rel} name=${curi.name}"
+    )
+    require(
+      curi.href.contains( REL_PLACEHOLDER ),
+      s"Href [${curi.href}] of the CURI does not contain the required {rel} placeholder."
     )
 
     val curiHref = curi.href
 
     CuriTemplate(
       relPrefix = curiHref.substring( 0, curiHref.indexOf( REL_PLACEHOLDER ) ),
-      curiedRelPrefix = curi.name + ":",
+      curiedRelPrefix = curi.name.map( _ + ":" ).getOrElse( "" ),
       relSuffix = curiHref.substring(
         curiHref.indexOf( REL_PLACEHOLDER ) + REL_PLACEHOLDER.length,
         curiHref.length
