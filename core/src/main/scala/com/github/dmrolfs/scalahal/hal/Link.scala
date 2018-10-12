@@ -253,7 +253,7 @@ object Link {
     */
   def curi( name: String, relTemplate: String ): Link = {
     require(
-      relTemplate.contains("{rel}"),
+      relTemplate.contains( "{rel}" ),
       "Not a CURI template. Template is required to contain a {rel} placeholder"
     )
 
