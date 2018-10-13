@@ -3,6 +3,7 @@ package com.github.dmrolfs.scalahal.hal
 import io.circe.Decoder.Result
 import io.circe._
 import io.circe.syntax._
+import Links.SingleOrArray
 
 /**
   * Representation of a number of HAL _links.
@@ -24,7 +25,9 @@ import io.circe.syntax._
   * @see <a href="https://tools.ietf.org/html/draft-kelly-json-hal-08#section-4.1.1">draft-kelly-json-hal-08#section-4.1.1</a>
   * @since 0.1.0
   */
-case class Links private ( links: Map[String, Seq[Link]], curies: Curies ) {
+case class Links private ( curies: Curies, private val _links: Map[String, SingleOrArray[Link]] ) {
+
+  def all: Iterable[Link] = _links.values.map { _.fold( Seq( _ ), identity ) }.flatten
 
   /**
     * Returns a copy of this Links instance and replaces link-relation types with CURIed form, if
@@ -44,7 +47,7 @@ case class Links private ( links: Map[String, Seq[Link]], curies: Curies ) {
     * @return set of link-relation types
     * @since 0.3.0
     */
-  def rels: Set[String] = links.keySet
+  def rels: Set[String] = _links.keySet
 
   /**
     * <p>
@@ -106,7 +109,15 @@ case class Links private ( links: Map[String, Seq[Link]], curies: Curies ) {
     * @see <a href="https://tools.ietf.org/html/draft-kelly-json-hal-08#section-8.2">draft-kelly-json-hal-08#section-8.2</a>
     * @since 0.1.0
     */
-  def linksBy( rel: String ): Seq[Link] = links.getOrElse( curies.resolve( rel ), Seq.empty[Link] )
+  def linksBy( rel: String ): Seq[Link] = {
+    _links
+      .get( curies.resolve( rel ) )
+      .map {
+        case Left( l )   => Seq( l )
+        case Right( ls ) => ls
+      }
+      .getOrElse { Seq.empty[Link] }
+  }
 
   /**
     * <p>
@@ -138,7 +149,7 @@ case class Links private ( links: Map[String, Seq[Link]], curies: Curies ) {
     * Removes the links with link-relation type {@code rel} from the Links object.
     * @param rel link-relation type
     */
-  def remove( rel: String ): Links = this.copy( links = this.links - rel )
+  def remove( rel: String ): Links = this.copy( _links = this._links - rel )
 
   /**
     * Checks the existence of a link with link-relation type {@code rel}
@@ -147,7 +158,7 @@ case class Links private ( links: Map[String, Seq[Link]], curies: Curies ) {
     *
     * @since 0.1.0
     */
-  def hasLink( rel: String ): Boolean = links contains rel
+  def hasLink( rel: String ): Boolean = _links contains rel
 
   /**
     * Returns true if there is at least one link with link-relation type {@code rel}, and if the
@@ -159,9 +170,9 @@ case class Links private ( links: Map[String, Seq[Link]], curies: Curies ) {
     * @since 0.1.0
     */
   def isArray( rel: String ): Boolean = {
-    links
+    _links
       .get( rel )
-      .map { _.size > 1 }
+      .map { _.isRight }
       .getOrElse { false }
   }
 
@@ -171,11 +182,15 @@ case class Links private ( links: Map[String, Seq[Link]], curies: Curies ) {
     *
     * @since 0.1.0
     */
-  def isEmpty: Boolean = links.isEmpty
+  def isEmpty: Boolean = _links.isEmpty
 }
 
 object Links {
-  val empty: Links = Links( links = Map.empty[String, Seq[Link]], curies = Curies.empty )
+
+  type SingleOrArray[T] = Either[T, Seq[T]]
+  type RelLink = ( String, SingleOrArray[Link] )
+
+  val empty: Links = Links( curies = Curies.empty, _links = Map.empty[String, SingleOrArray[Link]] )
 
   def linkingTo: Builder = Builder()
 
@@ -223,8 +238,8 @@ object Links {
     * @since 0.1.0
     */
   case class Builder(
-    links: Map[String, Seq[Link]] = Map.empty[String, Seq[Link]],
-    curies: Curies = Curies.empty
+    curies: Curies = Curies.empty,
+    _links: Map[String, SingleOrArray[Link]] = Map.empty[String, SingleOrArray[Link]],
   ) {
 
     /**
@@ -345,12 +360,12 @@ object Links {
       */
     def single( link: Link, more: Link* ): Builder = {
       require(
-        link.rel == Curies.Rel,
+        link.rel != Curies.Rel,
         "According to the spec, curies must always be arrays of links, not single links."
       )
 
-      val newBuilder = if (!this.links.contains( link.rel )) {
-        this.copy( links = this.links + (link.rel -> Seq( link )) )
+      val newBuilder = if (!this._links.contains( link.rel )) {
+        this.copy( _links = this._links + (link.rel -> Left( link )) )
       } else {
         throw new IllegalStateException(
           s"The Link-Relation Type '${link.rel}' of the Link is already present."
@@ -461,18 +476,29 @@ object Links {
     def array( links: Seq[Link] ): Builder = {
       links.foldLeft( this ) { ( acc, link ) =>
         val preppedLinks = {
-          if (acc.links contains link.rel) acc.links
-          else acc.links + (link.rel -> Seq.empty[Link])
+          if (acc._links contains link.rel) acc._links
+          else acc._links + (link.rel -> Right( Seq.empty[Link] ))
         }
 
         val linksForRel = {
-          val rl = preppedLinks( link.rel )
-          val equivalentLinkExists = rl exists { _ isEquivalentTo link }
-          if (!equivalentLinkExists) rl :+ link else rl
-        }
-        val newLinks = preppedLinks + (link.rel -> linksForRel)
+          val rl: SingleOrArray[Link] = preppedLinks( link.rel )
+          rl match {
+            case Right( ls ) => {
+              val equivalentLinkExists = ls exists { _ isEquivalentTo link }
+              if (!equivalentLinkExists) ls :+ link else ls
+            }
 
-        acc.copy( links = newLinks )
+            case Left( _ ) => {
+              throw new IllegalStateException(
+                s"Unable to add links with rel=[${link.rel}] as there is already a single Link " +
+                s"Object added for this link-relation type"
+              )
+            }
+          }
+        }
+
+        val newLinks = preppedLinks + (link.rel -> Right( linksForRel ))
+        acc.copy( _links = newLinks )
       }
     }
 
@@ -503,8 +529,8 @@ object Links {
       */
     def replace( rel: String, links: Seq[Link] ): Builder = {
       require( links.exists { _.rel == rel }, s"All links must have link-relation type ${rel}" )
-      if (!this.links.contains( rel )) array( links )
-      else this.copy( links = this.links + (rel -> links) )
+      if (!this._links.contains( rel )) array( links )
+      else this.copy( _links = this._links + (rel -> Right( links )) )
     }
 
     /**
@@ -534,7 +560,7 @@ object Links {
       *
       * @since 0.1.0
       */
-    def without( rel: String ): Builder = this.copy( links = this.links - rel )
+    def without( rel: String ): Builder = this.copy( _links = this._links - rel )
 
     def using( curies: Curies ): Builder = this.copy( curies = this.curies.mergeWith( curies ) )
 
@@ -543,7 +569,7 @@ object Links {
       *
       * @return Links
       */
-    def build(): Links = Links( links, curies )
+    def build(): Links = Links( curies, _links )
   }
 
   /**
@@ -554,11 +580,11 @@ object Links {
   implicit val encoder: Encoder[Links] = new Encoder[Links] {
     override def apply( links: Links ): Json = {
       val fields: Map[String, Json] = for {
-        relLinks <- links.links
+        relLinks <- links._links
         ( rel, ls ) = relLinks
       } yield {
-        val linkJsons = ls map { _.asJson }
-        val value = if (links.isArray( rel )) Json.fromValues( linkJsons ) else linkJsons.head
+        val linkJsons = ls.fold( l => Left( l.asJson ), ls => Right( ls.map( _.asJson ) ) )
+        val value = linkJsons.fold( identity, Json.fromValues )
         ( rel, value )
       }
 
@@ -577,21 +603,47 @@ object Links {
       import cats.instances.list._
       import cats.syntax.traverse._
 
-      val parsedLinks: Iterable[Decoder.Result[( String, Seq[Link] )]] = {
+      val parsedLinks: Iterable[Decoder.Result[RelLink]] = {
         for {
           ks <- c.keys.toIterable
           k  <- ks
         } yield {
-          c.downField( k ).as[Seq[Link]] map { values =>
-            ( k, values )
-          }
+          c.downField( k )
+            .focus
+            .map {
+              case json if json.isArray => json.as[Seq[Link]] map { Right( _ ) }
+              case json                 => json.as[Link] map { Left( _ ) }
+            }
+            .map { values =>
+              values map { ( k, _ ) }
+            }
+            .getOrElse {
+//              val result: Decoder.Result[RelLink] = {
+              Right( ( k, Right( Seq.empty[Link] ) ) )
+//              }
+//              result
+            }
+//            .getOrElse {
+//              Right( Right( Seq.empty[Link]))
+//            }
+
+//          //todo need to parse either single or Seq[Link]
+//          c.downField( k ).as[Seq[Link]] map { values =>
+//            ( k, values )
+//          }
         }
       }
 
       parsedLinks.toList.sequence.map { relLinks =>
-        val all: Map[String, Seq[Link]] = Map( relLinks: _* )
-        val curies = all.get( Curies.Rel ).map { Curies.apply }.getOrElse { Curies.empty }
-        Links.Builder( all - Curies.Rel, curies ).build()
+        val all: Map[String, SingleOrArray[Link]] = Map( relLinks: _* )
+        val curies = {
+          all
+            .get( Curies.Rel )
+            .map { _.fold( Seq( _ ), identity ) }
+            .map { Curies.apply }
+            .getOrElse { Curies.empty }
+        }
+        Links.Builder( curies, all - Curies.Rel ).build()
       }
     }
   }
