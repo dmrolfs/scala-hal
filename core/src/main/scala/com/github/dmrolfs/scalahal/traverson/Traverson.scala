@@ -107,7 +107,7 @@ case class Traverson private (
 
     if (ctx.isEmpty) {
       val hasRelativeLink = {
-        resource.links.links.values.flatten.exists { _.href.matches( """http.*//.*""" ) }
+        resource.links.all exists { _.href.matches( """http.*//.*""" ) }
       }
 
       if (hasRelativeLink) {
