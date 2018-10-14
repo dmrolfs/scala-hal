@@ -1,5 +1,7 @@
 package com.github.dmrolfs.scalahal.hal
 
+import journal._
+
 /**
   * <p>
   *   A utility class used to handle user-defined link-relation types and CURI templates.
@@ -71,6 +73,7 @@ case class CuriTemplate private (
   relSuffix: String,
   curi: Link
 ) {
+  private val log = Logger[CuriTemplate]
 
   /**
     * Returns true, if the given link-relation type is matching the CuriTemplate pattern, false if
@@ -213,8 +216,11 @@ case class CuriTemplate private (
     * @since 0.1.0
     */
   def curiedRelFrom( rel: String ): String = {
-    if (isMatchingCuriedRel( rel )) rel
-    else if (isMatchingExpandedRel( rel )) {
+    if (isMatchingCuriedRel( rel )) {
+      log.info( s"CuriTemplate: curiedRelFrom rel=[${rel}] matched curied rel" )
+      rel
+    } else if (isMatchingExpandedRel( rel )) {
+      log.info( s"CuriTemplate: curiedRelFrom rel=[${rel}] matched expanded rel" )
       curi.name.map( _ + ":" ).getOrElse( "" ) + relPlaceHolderFrom( rel )
     } else {
       throw new IllegalArgumentException( s"Rel [${rel}] does not match the CURI template." )

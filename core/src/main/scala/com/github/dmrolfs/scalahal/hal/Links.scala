@@ -3,6 +3,7 @@ package com.github.dmrolfs.scalahal.hal
 import io.circe.Decoder.Result
 import io.circe._
 import io.circe.syntax._
+import journal._
 import Links.SingleOrArray
 
 /**
@@ -26,6 +27,7 @@ import Links.SingleOrArray
   * @since 0.1.0
   */
 case class Links private ( curies: Curies, private val _links: Map[String, SingleOrArray[Link]] ) {
+  private val log = Logger[Links]
 
   def all: Iterable[Link] = _links.values.map { _.fold( Seq( _ ), identity ) }.flatten
 
@@ -39,7 +41,7 @@ case class Links private ( curies: Curies, private val _links: Map[String, Singl
     * @param curies Curies used to replace CURIed rels
     * @return Links having a reference to the given Curies.
     */
-  def using( curies: Curies ): Links = this.copy( curies = curies )
+  def using( curies: Curies ): Links = Links.unsafeCreate( _links, curies )
 
   /**
     * Returns all link-relation types of the embedded items.
@@ -110,6 +112,8 @@ case class Links private ( curies: Curies, private val _links: Map[String, Singl
     * @since 0.1.0
     */
   def linksBy( rel: String ): Seq[Link] = {
+    log.info( s"linksBy: curies.resolve(${rel}) = ${curies.resolve( rel )}" )
+
     _links
       .get( curies.resolve( rel ) )
       .map {
@@ -222,15 +226,27 @@ object Links {
     * @param curies the Curies used to CURI the link-relation types of the links.
     * @since 0.1.0
     */
-//  private def unsafeCreate( links: Map[String, Seq[Link]], curies: Curies ) = {
-//    val curiLinks = links.getOrElse( Curies.Rel, Seq.empty[Link] )
-//    val registeredCuries = curiLinks.foldLeft( curies ) { _ register _ }
-//    val resolvedLinks = links.keySet.foldLeft( Map.empty[String, Seq[Link]] ) { ( acc, rel ) =>
-//      acc + (registeredCuries.resolve( rel ) -> links( rel ))
-//    }
-//
-//    Links( links = resolvedLinks, curies = registeredCuries )
-//  }
+  private def unsafeCreate(
+    links: Map[String, SingleOrArray[Link]],
+    curies: Curies
+  ): Links = {
+    val curiLinks = {
+      links
+        .get( Curies.Rel )
+        .map { _.fold( Seq( _ ), identity ) }
+        .getOrElse { Seq.empty[Link] }
+    }
+
+    val registeredCuries: Curies = curiLinks.foldLeft( curies ) { _ register _ }
+
+    val resolvedLinks: Map[String, SingleOrArray[Link]] = {
+      links.keySet.foldLeft( Map.empty[String, SingleOrArray[Link]] ) { ( acc, rel ) =>
+        acc + (registeredCuries.resolve( rel ) -> links( rel ))
+      }
+    }
+
+    Links( registeredCuries, resolvedLinks )
+  }
 
   /**
     * A Builder used to build Links instances.
@@ -569,7 +585,7 @@ object Links {
       *
       * @return Links
       */
-    def build(): Links = Links( curies, _links )
+    def build(): Links = Links.unsafeCreate( _links, curies )
   }
 
   /**

@@ -71,6 +71,7 @@ case class Curies( curies: Seq[Link] ) {
     */
   def resolve( rel: String ): String = {
     val template: Option[CuriTemplate] = CuriTemplate.matchingCuriTemplateFor( curies, rel )
+    log.info( s"Curies: resolve template = ${template}" )
     template.map { _.curiedRelFrom( rel ) } getOrElse { rel }
   }
 
