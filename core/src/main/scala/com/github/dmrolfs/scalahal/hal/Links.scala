@@ -4,7 +4,6 @@ import io.circe.Decoder.Result
 import io.circe._
 import io.circe.syntax._
 import journal._
-import Links.SingleOrArray
 
 /**
   * Representation of a number of HAL _links.
@@ -176,7 +175,7 @@ case class Links private ( curies: Curies, private val _links: Map[String, Singl
   def isArray( rel: String ): Boolean = {
     _links
       .get( rel )
-      .map { _.isRight }
+      .map { SingleOrArray.isArray }
       .getOrElse { false }
   }
 
@@ -190,10 +189,6 @@ case class Links private ( curies: Curies, private val _links: Map[String, Singl
 }
 
 object Links {
-
-  type SingleOrArray[T] = Either[T, Seq[T]]
-  type RelLink = ( String, SingleOrArray[Link] )
-
   val empty: Links = Links( curies = Curies.empty, _links = Map.empty[String, SingleOrArray[Link]] )
 
   def linkingTo: Builder = Builder()
@@ -619,7 +614,7 @@ object Links {
       import cats.instances.list._
       import cats.syntax.traverse._
 
-      val parsedLinks: Iterable[Decoder.Result[RelLink]] = {
+      val parsedLinks: Iterable[Decoder.Result[RelPair[Link]]] = {
         for {
           ks <- c.keys.toIterable
           k  <- ks
@@ -650,7 +645,7 @@ object Links {
         }
       }
 
-      parsedLinks.toList.sequence.map { relLinks =>
+      parsedLinks.toList.sequence map { relLinks =>
         val all: Map[String, SingleOrArray[Link]] = Map( relLinks: _* )
         val curies = {
           all

@@ -1,7 +1,5 @@
 package com.github.dmrolfs.scalahal.hal
 
-import java.net.URL
-
 import com.damnhandy.uri.template.UriTemplate
 import io.circe.{ Decoder, Encoder, HCursor, Json }
 

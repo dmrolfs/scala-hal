@@ -37,7 +37,7 @@ case class Embedded(
     *   The values are either List&lt;HalRepresentation&gt; or single HalRepresentation instances.
     * </p>
     */
-  items: Map[String, Seq[HalRepresentation]],
+  items: Map[String, SingleOrArray[HalRepresentation]],
   /**
     * The Curies instance used to resolve curies
     */
@@ -65,10 +65,12 @@ case class Embedded(
     */
   def isArray( rel: String ): Boolean = {
     val resolvedRel = curies.resolve( rel )
-    hasItem( rel ) && (items( resolvedRel ).size > 1)
+    hasItem( rel ) && SingleOrArray.isArray( items( resolvedRel ) )
   }
 
-  protected[scalahal] def using( curies: Curies ): Embedded = this.copy( curies = curies )
+  protected[scalahal] def using( curies: Curies ): Embedded = {
+    Embedded.createWithRepresentations( this.items, curies )
+  }
 
   /**
     * Returns all link-relation types of the embedded items.
@@ -89,7 +91,10 @@ case class Embedded(
     * @since 0.1.0
     */
   def itemsBy( rel: String ): Seq[HalRepresentation] = {
-    items.getOrElse( curies.resolve( rel ), Seq.empty[HalRepresentation] )
+    items
+      .get( curies.resolve( rel ) )
+      .map { _.fold( Seq( _ ), identity ) }
+      .getOrElse { Seq.empty[HalRepresentation] }
   }
 
   /**
@@ -156,15 +161,40 @@ case class Embedded(
 
 object Embedded {
 
+  //  @SuppressWarnings("unchecked")
+  //  private Embedded(final Map<String, Object> items, final Curies curies) {
+  //    final Map<String, Object> curiedItems = new LinkedHashMap<>();
+  //    for (final String rel : items.keySet()) {
+  //      final Object itemOrListOfItems = items.get(rel);
+  //      if (itemOrListOfItems instanceof List) {
+  //        curiedItems.put(curies.resolve(rel), ((List<HalRepresentation>) itemOrListOfItems)
+  //          .stream()
+  //          .map(halRepresentation -> halRepresentation.mergeWithEmbedding(curies))
+  //          .collect(toList()));
+  //      } else {
+  //        curiedItems.put(curies.resolve(rel), ((HalRepresentation) itemOrListOfItems).mergeWithEmbedding(curies));
+  //      }
+  //    }
+  //    this.items = curiedItems;
+  //    this.curies = curies;
+  //  }
+
   def createWithRepresentations(
-    items: Map[String, Seq[HalRepresentation]] = Map.empty[String, Seq[HalRepresentation]],
+    items: Map[String, SingleOrArray[HalRepresentation]] = Map(),
     curies: Curies = Curies.empty
   ): Embedded = {
-    val curiedItems: Map[String, Seq[HalRepresentation]] = for {
-      relAndRepresentations <- items
-      ( rel, relReps ) = relAndRepresentations
-    } yield {
-      ( curies.resolve( rel ), relReps.map { _.mergeWithEmbedding( curies ) } )
+    val curiedItems: Map[String, SingleOrArray[HalRepresentation]] = {
+      for {
+        relRepresentations <- items
+        ( rel, reps ) = relRepresentations
+      } yield {
+        val curiedReps = reps match {
+          case Left( r )   => Left( r mergeWithEmbedding curies )
+          case Right( rs ) => Right( rs map { _ mergeWithEmbedding curies } )
+        }
+
+        ( curies resolve rel, curiedReps )
+      }
     }
 
     Embedded( items = curiedItems, curies = curies )
@@ -176,7 +206,7 @@ object Embedded {
     curies: Curies = Curies.empty
   ): Embedded = {
     createWithRepresentations(
-      items = Map( curies.resolve( rel ) -> Seq( item.mergeWithEmbedding( curies ) ) ),
+      items = Map( curies.resolve( rel ) -> Left( item.mergeWithEmbedding( curies ) ) ),
       curies = curies
     )
   }
@@ -189,7 +219,7 @@ object Embedded {
     * @since 0.1.0
     */
   val empty: Embedded = Embedded(
-    items = Map.empty[String, Seq[HalRepresentation]],
+    items = Map.empty[String, SingleOrArray[HalRepresentation]],
     curies = Curies.empty
   )
 
@@ -218,7 +248,7 @@ object Embedded {
     * @since 0.1.0
     */
   def embedded( rel: String, embeddedRepresentations: Seq[HalRepresentation] ): Embedded = {
-    createWithRepresentations( items = Map( rel -> embeddedRepresentations ) )
+    createWithRepresentations( items = Map( rel -> Right( embeddedRepresentations ) ) )
   }
 
   /**
@@ -230,25 +260,22 @@ object Embedded {
     */
   def embeddedBuilder(): Builder = Builder()
 
-  object Builder {
-
-    /**
-      * <p>
-      *   Creates an EmbeddedBuilder initialized from a copy of an Embedded instance.
-      * </p>
-      * <p>
-      *   This is used to add / replace lists of HAL representations for a link-relation type.
-      * </p>
-      * @param embedded the Embedded instance to be copied.
-      * @return EmbeddedBuilder that is initialized using {@code embedded}.
-      *
-      * @since 0.1.0
-      */
-    def fromPrototype( prototype: Embedded ): Builder = Builder( embedded = prototype.items )
-  }
+  /**
+    * <p>
+    *   Creates an EmbeddedBuilder initialized from a copy of an Embedded instance.
+    * </p>
+    * <p>
+    *   This is used to add / replace lists of HAL representations for a link-relation type.
+    * </p>
+    * @param embedded the Embedded instance to be copied.
+    * @return EmbeddedBuilder that is initialized using {@code embedded}.
+    *
+    * @since 0.1.0
+    */
+  def fromPrototype( prototype: Embedded ): Builder = Builder( embedded = prototype.items )
 
   final case class Builder private (
-    embedded: Map[String, Seq[HalRepresentation]] = Map.empty[String, Seq[HalRepresentation]],
+    embedded: Map[String, SingleOrArray[HalRepresentation]] = Map(),
     curies: Curies = Curies.empty
   ) {
 
@@ -282,7 +309,7 @@ object Embedded {
       rel: String,
       embeddedRepresentations: Seq[HalRepresentation]
     ): Builder = {
-      this.copy( embedded = this.embedded + (rel -> embeddedRepresentations) )
+      this.copy( embedded = this.embedded + (rel -> Right( embeddedRepresentations )) )
     }
 
     /**
@@ -313,7 +340,7 @@ object Embedded {
       rel: String,
       embeddedRepresentation: HalRepresentation
     ): Builder = {
-      this.copy( embedded = this.embedded + (rel -> Seq( embeddedRepresentation )) )
+      this.copy( embedded = this.embedded + (rel -> Left( embeddedRepresentation )) )
     }
 
     /**
@@ -335,20 +362,58 @@ object Embedded {
       *
       * @since 0.1.0
       */
-    def build(): Embedded = if (embedded.isEmpty) empty else Embedded( embedded, curies )
+    def build(): Embedded = {
+      if (embedded.isEmpty) empty else createWithRepresentations( embedded, curies )
+    }
   }
 
   implicit val encoder: Encoder[Embedded] = new Encoder[Embedded] {
     override def apply( e: Embedded ): Json = {
-      val fields: Seq[( String, Json )] = e.items.toSeq map { case ( k, vs ) => ( k, vs.asJson ) }
+      val fields: Seq[( String, Json )] = {
+        e.items.toSeq
+          .map { case ( k, v ) => ( k, v.fold( _.asJson, _.asJson ) ) }
+      }
+
       Json.obj( fields: _* )
     }
   }
 
   implicit val decoder: Decoder[Embedded] = new Decoder[Embedded] {
+    import cats.instances.either._
+    import cats.instances.list._
+    import cats.syntax.traverse._
+
     override def apply( c: HCursor ): Result[Embedded] = {
-      c.value.as[Map[String, Seq[HalRepresentation]]] map { items =>
-        Embedded.createWithRepresentations( items )
+      val parsedReps: Iterable[Decoder.Result[RelPair[HalRepresentation]]] = {
+        for {
+          ks <- c.keys.toIterable
+          k  <- ks
+        } yield {
+          c.downField( k )
+            .focus
+            .map {
+              case json if json.isArray => json.as[Seq[HalRepresentation]] map { Right( _ ) }
+              case json                 => json.as[HalRepresentation] map { Left( _ ) }
+            }
+            .map { values =>
+              values map { ( k, _ ) }
+            }
+            .getOrElse {
+              Right( ( k, Right( Seq.empty[HalRepresentation] ) ) )
+            }
+        }
+      }
+
+      parsedReps.toList.sequence map { relRep =>
+        val all: Map[String, SingleOrArray[HalRepresentation]] = Map( relRep: _* )
+//        val curies = {
+//          val r1: Int = all
+//            .get( Curies.Rel )
+//            .map { _.fold( Seq(_), identity ) }
+//            r1.map { Curies.apply }
+//            .getOrElse { Curies.empty }
+//        }
+        createWithRepresentations( all )
       }
     }
   }

@@ -79,7 +79,7 @@ case class HalRepresentation private (
     * @since 0.1.0
     */
   def withEmbedded( rel: String, embeddedItems: Seq[HalRepresentation] ): HalRepresentation = {
-    val b = Embedded.Builder.fromPrototype( this.embedded )
+    val b = Embedded.fromPrototype( this.embedded )
     this.copy( embedded = b.withRepresentations( rel, embeddedItems ).using( this.curies ).build() )
   }
 
@@ -99,7 +99,7 @@ case class HalRepresentation private (
     * @since 0.1.0
     */
   def withEmbedded( rel: String, embeddedItem: HalRepresentation ): HalRepresentation = {
-    val b = Embedded.Builder.fromPrototype( this.embedded )
+    val b = Embedded.fromPrototype( this.embedded )
     this.copy( embedded = b.withRepresentation( rel, embeddedItem ).using( this.curies ).build() )
   }
 
